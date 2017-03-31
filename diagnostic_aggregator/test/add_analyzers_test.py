@@ -52,10 +52,8 @@ class TestAddAnalyzer(unittest.TestCase):
         paramlist = rosparam.load_file(rospy.myargv()[1])
         # expect to receive these paths in the added analyzers
         self.expected = [paramlist[0][1] + analyzer['path'] for name, analyzer in paramlist[0][0]['analyzers'].iteritems()]
-
         self._mutex = threading.Lock()
         self.agg_msgs = {}
-
         self.add_diagnostics = None
         self.name = rospy.get_name()
         #self.namespace = None
@@ -73,16 +71,12 @@ class TestAddAnalyzer(unittest.TestCase):
                 self.agg_msgs[stat.name] = stat
 
     def add_analyzer(self):
-        target = open("../tititoto", 'w')
-        target.write("HI\n")
-        target.close()
         """Start a bond to the aggregator
         """
         self.bond = bondpy.Bond("/diagnostics_agg/bond", rospy.resolve_name(rospy.get_name()))
         self.bond.start()
         rospy.wait_for_service('/diagnostics_agg/add_diagnostics', timeout=10)
         self.add_diagnostics = rospy.ServiceProxy('/diagnostics_agg/add_diagnostics', AddDiagnostics)
-        print(self.namespace)
         resp = self.add_diagnostics(load_namespace=self.namespace)
         self.assert_(resp.success, 'Service call was unsuccessful: {0}'.format(resp.message))
 
@@ -101,12 +95,12 @@ class TestAddAnalyzer(unittest.TestCase):
             DiagnosticStatus(name='secondary', message='hello-secondary')
         ]
         self.pub.publish(arr)
-        #self.wait_for_agg()
+        self.wait_for_agg()
         # the new aggregator data should contain the extra paths. At this point
         # the paths are probably still in the 'Other' group because the bond
         # hasn't been fully formed
-        with self._mutex:
-            agg_paths = [msg.name for name, msg in self.agg_msgs.iteritems()]
+        #with self._mutex:
+        #agg_paths = [msg.name for name, msg in self.agg_msgs.iteritems()]
        #     self.assert_(all(expected in agg_paths for expected in self.expected))
 
         rospy.sleep(rospy.Duration(1))  # wait a bit for the new items to move to the right group
@@ -118,27 +112,28 @@ class TestAddAnalyzer(unittest.TestCase):
         #    if name in self.expected:  # should have just received messages on the analyzer
         #        self.assert_(msg.message == 'OK')
 
-        agg_paths = [msg.name for name, msg in self.agg_msgs.iteritems()]
+        #agg_paths = [msg.name for name, msg in self.agg_msgs.iteritems()]
         #self.assert_(all(expected in agg_paths for expected in self.expected))
 
-        # self.bond.shutdown()
 
-        try:
+        #try:
             # this will reverse the load if it is loaded on the other side
-            resp = self.add_diagnostics(load_namespace=self.namespace)
-            if resp.success:
-                rospy.loginfo(
-                    'Add Analyzers: successfully removed analyzers from the diagnostic aggregator [{0}]'.format(
-                        self.name))
-            else:
-                rospy.logerr('Add Analyzers: failed to remove analyzers on the diagnostic aggregator [{0}][{1}]'.format(
-                    self.name, resp.message))
-        except rospy.service.ServiceException:
-            rospy.logerr('Add Analyzers: unloading service returned failure [{0}]'.format(self.name))
-        except rospy.ROSException:
-            rospy.logerr(
-                'Add Analyzers: add timed out while waiting for diagnostics_agg service, or ROS shutdown [{0}]'.format(
-                    self.name))
+        resp = self.add_diagnostics(load_namespace=self.namespace)
+        self.bond.shutdown()
+
+        #     if resp.success:
+        #         rospy.loginfo(
+        #             'Add Analyzers: successfully removed analyzers from the diagnostic aggregator [{0}]'.format(
+        #                 self.name))
+        #     else:
+        #         rospy.logerr('Add Analyzers: failed to remove analyzers on the diagnostic aggregator [{0}][{1}]'.format(
+        #             self.name, resp.message))
+        # except rospy.service.ServiceException:
+        #     rospy.logerr('Add Analyzers: unloading service returned failure [{0}]'.format(self.name))
+        # except rospy.ROSException:
+        #     rospy.logerr(
+        #         'Add Analyzers: add timed out while waiting for diagnostics_agg service, or ROS shutdown [{0}]'.format(
+        #             self.name))
 
         self.wait_for_agg()
 
