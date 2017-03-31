@@ -81,7 +81,7 @@ void Aggregator::checkTimestamp(const diagnostic_msgs::DiagnosticArray::ConstPtr
       stamp_warn += ", ";
     stamp_warn += it->name;
   }
-
+  
   if (!ros_warnings_.count(stamp_warn))
   {
     ROS_WARN("%s", stamp_warn.c_str());
@@ -119,21 +119,22 @@ Aggregator::~Aggregator()
 }
 
 
-void Aggregator::bondBroken(string bond_id)
+void Aggregator::bondBroken(string bond_id, boost::shared_ptr<Analyzer> analyzer)
 {
   boost::mutex::scoped_lock lock(mutex_); // Possibility of multiple bonds breaking at once
   ROS_DEBUG("Bond for namespace %s was broken", bond_id.c_str());
-  BondAnalyzerPairs::iterator elem;
+  std::vector<boost::shared_ptr<bond::Bond> >::iterator elem;
   elem = std::find_if(bonds_.begin(), bonds_.end(), BondIDMatch(bond_id));
   if (elem == bonds_.end()){
     ROS_WARN("Broken bond tried to erase a bond which didn't exist.");
   } else {
-    if (!analyzer_group_->removeAnalyzer(elem->second))
-    {
-      ROS_WARN("Broken bond tried to remove an analyzer which didn't exist.");
-    }
     bonds_.erase(elem);
   }
+  if (!analyzer_group_->removeAnalyzer(analyzer))
+  {
+    ROS_WARN("Broken bond tried to remove an analyzer which didn't exist.");
+  }
+
   analyzer_group_->resetMatches();
 }
 
@@ -143,49 +144,39 @@ void Aggregator::bondFormed(boost::shared_ptr<Analyzer> group){
   analyzer_group_->addAnalyzer(group);
   analyzer_group_->resetMatches();
 }
-/*
- * This will load diagnostics if they are not already loaded
- * and reverse the operation (unload) them if they are.
- */
+
 bool Aggregator::addDiagnostics(diagnostic_msgs::AddDiagnostics::Request &req,
 				diagnostic_msgs::AddDiagnostics::Response &res)
 {
+  ROS_DEBUG("Got load request for namespace %s", req.load_namespace.c_str());
   // Don't currently support relative or private namespace definitions
   if (req.load_namespace[0] != '/')
   {
-    res.message = "Requested (un)load from non-global namespace. Private and relative namespaces are not supported.";
+    res.message = "Requested load from non-global namespace. Private and relative namespaces are not supported.";
     res.success = false;
     return true;
   }
 
   boost::shared_ptr<Analyzer> group = boost::make_shared<AnalyzerGroup>();
-  {
-    // Without lock, possibility of two simultaneous calls in this function at the same time
+  { // lock here ensures that bonds from the same namespace aren't added twice.
+    // Without it, possibility of two simultaneous calls adding two objects.
     boost::mutex::scoped_lock lock(mutex_);
-    // if adding to a namespace that already has it, remove it - toggle!
-    BondAnalyzerPairs::iterator existing_bond_analyzer_iter = std::find_if(bonds_.begin(), bonds_.end(), BondIDMatch(req.load_namespace));
-    if (existing_bond_analyzer_iter != bonds_.end())
+    // rebuff attempts to add things from the same namespace twice
+    if (std::find_if(bonds_.begin(), bonds_.end(), BondIDMatch(req.load_namespace)) != bonds_.end())
     {
-      ROS_DEBUG("Got unload request for namespace %s", req.load_namespace.c_str());
-      if (!analyzer_group_->removeAnalyzer(existing_bond_analyzer_iter->second))
-      {
-        ROS_WARN("Tried to remove an analyzer which didn't exist.");
-      }
-      bonds_.erase(existing_bond_analyzer_iter);
-      res.message = "Unloaded from namespace '" + req.load_namespace + "'";
-      res.success = true;
+      res.message = "Requested load from namespace " + req.load_namespace + " which is already in use";
+      res.success = false;
       return true;
     }
-    ROS_DEBUG("Got load request for namespace %s", req.load_namespace.c_str());
 
     boost::shared_ptr<bond::Bond> req_bond = boost::make_shared<bond::Bond>(
       "/diagnostics_agg/bond", req.load_namespace,
-      boost::function<void(void)>(boost::bind(&Aggregator::bondBroken, this, req.load_namespace)),
+      boost::function<void(void)>(boost::bind(&Aggregator::bondBroken, this, req.load_namespace, group)),
       boost::function<void(void)>(boost::bind(&Aggregator::bondFormed, this, group))
 									    );
     req_bond->start();
 
-    bonds_.push_back(std::make_pair(req_bond, group)); // bond formed, keep track of it with associated analyzer
+    bonds_.push_back(req_bond); // bond formed, keep track of it
   }
 
   if (group->init(base_path_, ros::NodeHandle(req.load_namespace)))
@@ -210,7 +201,7 @@ void Aggregator::publishData()
   diag_toplevel_state.name = "toplevel_state";
   diag_toplevel_state.level = -1;
   int min_level = 255;
-
+  
   vector<boost::shared_ptr<diagnostic_msgs::DiagnosticStatus> > processed;
   {
     boost::mutex::scoped_lock lock(mutex_);
