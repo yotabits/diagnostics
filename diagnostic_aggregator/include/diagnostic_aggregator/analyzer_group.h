@@ -48,6 +48,7 @@
 #include <diagnostic_msgs/KeyValue.h>
 #include "diagnostic_aggregator/status_item.h"
 #include <boost/shared_ptr.hpp>
+#include <boost/thread/mutex.hpp>
 #include "XmlRpcValue.h"
 #include "diagnostic_aggregator/analyzer.h"
 #include "diagnostic_aggregator/status_item.h"
@@ -157,6 +158,7 @@ public:
 
 private:
   std::string path_, nice_name_;
+  boost::mutex mutex_;
 
   /*!
    *\brief Loads Analyzer plugins in "analyzers" namespace

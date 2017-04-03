@@ -35,6 +35,7 @@
 /**! \author Kevin Watts */
 
 #include <diagnostic_aggregator/analyzer_group.h>
+#include <stdio.h>
 
 using namespace std;
 using namespace diagnostic_aggregator;
@@ -52,6 +53,7 @@ AnalyzerGroup::AnalyzerGroup() :
 
 bool AnalyzerGroup::init(const string base_path, const ros::NodeHandle &n)
 {
+  boost::mutex::scoped_lock lock(mutex_);
   n.param("path", nice_name_, string(""));
   
   if (base_path.size() > 0 && base_path != "/")
@@ -162,17 +164,20 @@ bool AnalyzerGroup::init(const string base_path, const ros::NodeHandle &n)
 
 AnalyzerGroup::~AnalyzerGroup()
 {
+  boost::mutex::scoped_lock lock(mutex_);
   analyzers_.clear();
 }
 
 bool AnalyzerGroup::addAnalyzer(boost::shared_ptr<Analyzer>& analyzer)
 {
+  boost::mutex::scoped_lock lock(mutex_);
   analyzers_.push_back(analyzer);
   return true;
 }
 
 bool AnalyzerGroup::removeAnalyzer(boost::shared_ptr<Analyzer>& analyzer)
 {
+  boost::mutex::scoped_lock lock(mutex_);
   vector<boost::shared_ptr<Analyzer> >::iterator it = find(analyzers_.begin(), analyzers_.end(), analyzer);
   if (it != analyzers_.end())
   {
@@ -184,6 +189,7 @@ bool AnalyzerGroup::removeAnalyzer(boost::shared_ptr<Analyzer>& analyzer)
 
 bool AnalyzerGroup::match(const string name)
 {
+  boost::mutex::scoped_lock lock(mutex_);
   if (analyzers_.size() == 0)
     return false;
 
@@ -212,12 +218,14 @@ bool AnalyzerGroup::match(const string name)
 
 void AnalyzerGroup::resetMatches()
 {
+  boost::mutex::scoped_lock lock(mutex_);
   matched_.clear();
 }
 
 
 bool AnalyzerGroup::analyze(const boost::shared_ptr<StatusItem> item)
 {
+  boost::mutex::scoped_lock lock(mutex_);
   ROS_ASSERT_MSG(matched_.count(item->getName()), "AnalyzerGroup was asked to analyze an item it hadn't matched.");
 
   bool analyzed = false;
@@ -225,7 +233,9 @@ bool AnalyzerGroup::analyze(const boost::shared_ptr<StatusItem> item)
   for (unsigned int i = 0; i < mtch_vec.size(); ++i)
   {
     if (mtch_vec[i])
+    {
       analyzed = analyzers_[i]->analyze(item) || analyzed;
+    }
   }
   
   return analyzed;
@@ -233,6 +243,7 @@ bool AnalyzerGroup::analyze(const boost::shared_ptr<StatusItem> item)
 
 vector<boost::shared_ptr<diagnostic_msgs::DiagnosticStatus> > AnalyzerGroup::report()
 {
+  boost::mutex::scoped_lock lock(mutex_);
   vector<boost::shared_ptr<diagnostic_msgs::DiagnosticStatus> > output;
 
   boost::shared_ptr<diagnostic_msgs::DiagnosticStatus> header_status(new diagnostic_msgs::DiagnosticStatus);

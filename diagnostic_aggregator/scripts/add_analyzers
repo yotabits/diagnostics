@@ -34,8 +34,8 @@ class AddAnalyzers:
         # Cannot rely on bonds to get a message across if parts of ros are shutting down
         #       https://github.com/ros/bond_core/issues/14
         #
-        # if self.bond:
-        #    self.bond.shutdown()
+       # if self.bond:
+       #    self.bond.shutdown()
 
 
     def add_analyzers(self, myargv):

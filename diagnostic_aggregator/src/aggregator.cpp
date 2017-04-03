@@ -150,6 +150,8 @@ void Aggregator::bondFormed(boost::shared_ptr<Analyzer> group){
 bool Aggregator::addDiagnostics(diagnostic_msgs::AddDiagnostics::Request &req,
 				diagnostic_msgs::AddDiagnostics::Response &res)
 {
+    boost::mutex::scoped_lock lock(mutex_);
+
   // Don't currently support relative or private namespace definitions
   if (req.load_namespace[0] != '/')
   {
@@ -161,7 +163,6 @@ bool Aggregator::addDiagnostics(diagnostic_msgs::AddDiagnostics::Request &req,
   boost::shared_ptr<Analyzer> group = boost::make_shared<AnalyzerGroup>();
   {
     // Without lock, possibility of two simultaneous calls in this function at the same time
-    boost::mutex::scoped_lock lock(mutex_);
     // if adding to a namespace that already has it, remove it - toggle!
     BondAnalyzerPairs::iterator existing_bond_analyzer_iter = std::find_if(bonds_.begin(), bonds_.end(), BondIDMatch(req.load_namespace));
     if (existing_bond_analyzer_iter != bonds_.end())
